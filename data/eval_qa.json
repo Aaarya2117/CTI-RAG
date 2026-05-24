@@ -1,0 +1,12 @@
+[
+  {
+    "question": "REPLACE WITH YOUR QUESTION 1",
+    "expected_answer_keywords": ["keyword1", "keyword2"],
+    "expected_chunk_contains": "phrase that should appear in the top retrieved chunk"
+  },
+  {
+    "question": "REPLACE WITH YOUR QUESTION 2",
+    "expected_answer_keywords": ["keyword3"],
+    "expected_chunk_contains": "another phrase"
+  }
+]

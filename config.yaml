@@ -1,0 +1,38 @@
+# Chunking config
+chunk_size: 300           # tokens per chunk (approximate, measured in words)
+chunk_overlap: 50         # overlapping words between consecutive chunks
+
+# Embedding config
+embedding_provider: "gemini_api"
+embedding_model: "gemini-embedding-2"
+embedding_dim: 3072
+
+# Retrieval config
+top_k: 4                  # number of chunks to retrieve per query
+
+# Generation config
+# Providers: "openrouter" (hosted API), "gemini_api" (Google), "local" (Flan-T5), "hf_inference_api"
+generation_provider: "gemini_api"
+generation_model: "gemini-2.5-flash"
+
+# OpenRouter config
+openrouter_api_key: ""         # optional fallback; prefer OPENROUTER_API_KEY in .env or environment
+openrouter_site_url: ""
+openrouter_app_name: "RAG Document QA"
+fallback_to_local_on_rate_limit: false
+local_fallback_model: "google/flan-t5-small"
+
+# Hugging Face Inference API config
+use_hf_inference_api: false    # legacy option; ignored when generation_provider is set
+hf_api_token: ""               # optional fallback; prefer the HF_API_TOKEN environment variable
+max_new_tokens: 256
+max_input_tokens: 512
+temperature: 0.3
+
+# Paths
+index_save_path: "./data/index/faiss.index"
+chunks_save_path: "./data/index/chunks.pkl"
+
+# Evaluation
+eval_qa_path: "./data/eval_qa.json"
+results_path: "./results/eval_results.json"

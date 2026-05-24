@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+data/index/
+src/data/index/
+data/documents/
+*.faiss
+*.index
+*.pkl
+.gradio/
