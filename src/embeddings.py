@@ -50,20 +50,15 @@ class GeminiAPIEmbedder:
         import numpy as np
         
         embeddings = []
-        # Process in batches
-        bs = 64 if batch_size is None else batch_size
-        for i in range(0, len(texts), bs):
-            batch = texts[i:i+bs]
+        # Gemini embed_content treats a list of strings as ONE concatenated
+        # content and returns a single embedding.  We must call it once per
+        # text to get one embedding per chunk.
+        for i, text in enumerate(texts):
             result = self.client.models.embed_content(
                 model=self.model_name,
-                contents=batch,
+                contents=text,
             )
-            # Depending on if result is a list or single object
-            if isinstance(result.embeddings, list):
-                for e in result.embeddings:
-                    embeddings.append(e.values)
-            else:
-                embeddings.append(result.embeddings.values)
+            embeddings.append(result.embeddings[0].values)
             
         embeddings = np.array(embeddings)
         if normalize_embeddings:
