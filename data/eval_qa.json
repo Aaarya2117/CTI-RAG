@@ -1,12 +1,32 @@
 [
   {
-    "question": "REPLACE WITH YOUR QUESTION 1",
-    "expected_answer_keywords": ["keyword1", "keyword2"],
-    "expected_chunk_contains": "phrase that should appear in the top retrieved chunk"
+    "question": "What TTPs does APT29 use for initial access and lateral movement?",
+    "expected_answer_keywords": ["phishing", "spearphishing", "lateral movement", "T1566", "T1021", "APT29", "Cozy Bear"],
+    "expected_chunk_contains": "APT29"
   },
   {
-    "question": "REPLACE WITH YOUR QUESTION 2",
-    "expected_answer_keywords": ["keyword3"],
-    "expected_chunk_contains": "another phrase"
+    "question": "Which CVEs are exploited by the Volt Typhoon threat group?",
+    "expected_answer_keywords": ["CVE", "Volt Typhoon", "living off the land", "LOTL"],
+    "expected_chunk_contains": "Volt Typhoon"
+  },
+  {
+    "question": "What ransomware families are associated with the CL0P group and which vulnerability did they exploit?",
+    "expected_answer_keywords": ["CL0P", "MOVEit", "ransomware", "CVE-2023-34362", "data exfiltration"],
+    "expected_chunk_contains": "CL0P"
+  },
+  {
+    "question": "What IOCs such as IP addresses or file hashes are mentioned in the BianLian ransomware advisory?",
+    "expected_answer_keywords": ["BianLian", "ransomware", "IOC", "hash", "IP"],
+    "expected_chunk_contains": "BianLian"
+  },
+  {
+    "question": "What MITRE ATT&CK techniques are used for credential access in the loaded threat reports?",
+    "expected_answer_keywords": ["credential", "T1003", "T1555", "LSASS", "dumping", "MITRE"],
+    "expected_chunk_contains": "credential"
+  },
+  {
+    "question": "What defensive mitigations are recommended against living-off-the-land (LOTL) techniques?",
+    "expected_answer_keywords": ["mitigation", "detection", "logging", "PowerShell", "behavioral", "monitoring"],
+    "expected_chunk_contains": "mitigation"
   }
 ]

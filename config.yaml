@@ -18,7 +18,7 @@ generation_model: "gemini-2.5-flash"
 # OpenRouter config
 openrouter_api_key: ""         # optional fallback; prefer OPENROUTER_API_KEY in .env or environment
 openrouter_site_url: ""
-openrouter_app_name: "RAG Document QA"
+openrouter_app_name: "CTI-RAG"
 fallback_to_local_on_rate_limit: false
 local_fallback_model: "google/flan-t5-small"
 

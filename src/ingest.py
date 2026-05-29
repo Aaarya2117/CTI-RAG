@@ -1,11 +1,15 @@
 """
 ingest.py
-Load and chunk PDF or TXT documents into overlapping text windows.
-This is the first stage of the RAG pipeline.
+Load and chunk PDF, TXT, JSON CVE, or URL-based documents into overlapping text windows.
+This is the first stage of the CTI-RAG pipeline.
 """
 
 import re
+import json
 import pickle
+import datetime
+import tempfile
+import urllib.request
 from pathlib import Path
 from typing import List, Dict
 
@@ -41,15 +45,60 @@ def load_txt(file_path: str) -> str:
     return text
 
 
+def load_from_url(url: str) -> str:
+    """Download a PDF or HTML document from a URL and extract its text."""
+    with urllib.request.urlopen(url, timeout=15) as response:
+        content_type = response.headers.get("Content-Type", "")
+        data = response.read()
+
+    if "pdf" in content_type or url.lower().endswith(".pdf"):
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+        return load_pdf(tmp_path)
+    else:
+        # Treat as plain text / HTML — strip tags if needed
+        text = data.decode("utf-8", errors="replace")
+        text = re.sub(r"<[^>]+>", " ", text)  # strip HTML tags
+        return text
+
+
+def load_json_cve(file_path: str) -> str:
+    """Load and flatten a NVD CVE JSON feed into plain text for chunking."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    lines = []
+    # NVD CVE 2.0 feed structure
+    for item in data.get("vulnerabilities", []):
+        cve = item.get("cve", {})
+        cve_id = cve.get("id", "")
+        descriptions = cve.get("descriptions", [])
+        desc = next((d["value"] for d in descriptions if d["lang"] == "en"), "")
+        published = cve.get("published", "")
+        severity = ""
+        try:
+            severity = cve["metrics"]["cvssMetricV31"][0]["cvssData"]["baseSeverity"]
+        except (KeyError, IndexError):
+            pass
+        lines.append(f"CVE ID: {cve_id} | Published: {published} | Severity: {severity}\n{desc}")
+
+    return "\n\n".join(lines)
+
+
 def load_document(file_path: str) -> str:
-    """Auto-detect file type and load accordingly."""
+    """Auto-detect file type and load accordingly. Now also handles URLs."""
+    if file_path.startswith("http://") or file_path.startswith("https://"):
+        return load_from_url(file_path)
     path = Path(file_path)
     if path.suffix.lower() == ".pdf":
         return load_pdf(file_path)
     elif path.suffix.lower() == ".txt":
         return load_txt(file_path)
+    elif path.suffix.lower() == ".json":
+        return load_json_cve(file_path)
     else:
-        raise ValueError(f"Unsupported file type: {path.suffix}. Use .pdf or .txt")
+        raise ValueError(f"Unsupported file type: {path.suffix}. Use .pdf, .txt, .json, or a URL.")
 
 
 def clean_text(text: str) -> str:
@@ -113,6 +162,12 @@ def ingest_document(file_path: str, cfg: dict) -> List[Dict]:
     raw_text = load_document(file_path)
     clean = clean_text(raw_text)
     chunks = chunk_text(clean, cfg["chunk_size"], cfg["chunk_overlap"])
+
+    # Inject source metadata into each chunk
+    source_name = file_path if file_path.startswith("http") else Path(file_path).name
+    for chunk in chunks:
+        chunk["source"] = source_name
+        chunk["ingested_at"] = datetime.datetime.utcnow().isoformat()
 
     Path(cfg["chunks_save_path"]).parent.mkdir(parents=True, exist_ok=True)
     with open(cfg["chunks_save_path"], "wb") as f:

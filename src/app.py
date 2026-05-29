@@ -1,6 +1,6 @@
 """
 app.py
-Gradio web UI for the RAG Document Q&A pipeline.
+Gradio web UI for the CTI-RAG Threat Intelligence Q&A pipeline.
 Run: python app.py
 """
 
@@ -24,70 +24,109 @@ def process_document(file_obj) -> str:
         return f"❌ Error processing document: {str(e)}"
 
 
-def answer_question(question: str, show_sources: bool) -> tuple[str, str]:
-    if not question.strip():
-        return "Please enter a question.", ""
+def index_from_url(url: str) -> str:
+    if not url.strip():
+        return "No URL provided."
+    try:
+        pipeline.index_document(url.strip())
+        chunk_count = len(pipeline.retriever.chunks)
+        return f"✅ Indexed from URL! {chunk_count} chunks created."
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
 
+
+def answer_question(question: str, show_sources: bool) -> tuple[str, str, str]:
+    if not question.strip():
+        return "Please enter a question.", "", ""
     if not pipeline._is_ready:
-        return "Please upload and index a document first.", ""
+        return "Please upload and index a document first.", "", ""
 
     try:
         result = pipeline.ask(question, verbose=False)
         answer = result["answer"]
 
+        # Format IOCs
+        ioc_text = ""
+        iocs = result.get("iocs", {})
+        if iocs:
+            parts = []
+            for ioc_type, values in iocs.items():
+                parts.append(f"**{ioc_type.upper()}**: {', '.join(values)}")
+            ioc_text = "\n\n".join(parts)
+        else:
+            ioc_text = "_No IOCs detected in this response._"
+
+        # Format sources
         sources = ""
         if show_sources:
             sources_parts = []
             for chunk in result["retrieved_chunks"]:
+                src = chunk.get("source", "unknown")
+                score = chunk.get("score", 0)
                 sources_parts.append(
-                    f"**Chunk {chunk['rank']} (relevance: {chunk['score']:.3f})**\n"
+                    f"**Source: {src}** (relevance: {score:.3f})\n"
                     f"{chunk['text'][:300]}..."
                 )
             sources = "\n\n---\n\n".join(sources_parts)
 
-        return answer, sources
+        return answer, ioc_text, sources
     except Exception as e:
-        return f"Error: {str(e)}", ""
+        return f"Error: {str(e)}", "", ""
 
 
-with gr.Blocks(title="RAG Document Q&A", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="🛡️ CTI Threat Intelligence Q&A", theme=gr.themes.Soft()) as demo:
     gr.Markdown("""
-    # 📄 RAG Document Q&A
-    Upload a PDF or TXT document, then ask questions about it.
-    Built with sentence-transformers + FAISS + Flan-T5.
+    # 🛡️ CTI Threat Intelligence Q&A
+    Upload a threat report (PDF/TXT/JSON) or paste a URL to a CISA advisory, then ask security-specific questions.
+    Built with sentence-transformers + FAISS + Gemini.
     """)
 
     with gr.Row():
         with gr.Column(scale=1):
             gr.Markdown("### 1. Upload Document")
             file_input = gr.File(
-                label="Upload PDF or TXT",
-                file_types=[".pdf", ".txt"],
+                label="Upload PDF, TXT, or JSON CVE feed",
+                file_types=[".pdf", ".txt", ".json"],
             )
             upload_btn = gr.Button("📥 Index Document", variant="primary")
             upload_status = gr.Textbox(label="Status", interactive=False)
 
+            gr.Markdown("### — OR — Index from URL")
+            url_input = gr.Textbox(
+                label="Threat report URL",
+                placeholder="https://www.cisa.gov/...",
+                lines=1,
+            )
+            url_btn = gr.Button("🌐 Index from URL", variant="secondary")
+
         with gr.Column(scale=2):
             gr.Markdown("### 2. Ask Questions")
             question_input = gr.Textbox(
-                label="Your question",
-                placeholder="What is the main topic? What methods are used?...",
+                label="Analyst question",
+                placeholder="What TTPs does APT29 use for lateral movement?...",
                 lines=2,
             )
             show_sources = gr.Checkbox(label="Show retrieved source chunks", value=True)
-            ask_btn = gr.Button("🔍 Get Answer", variant="primary")
+            ask_btn = gr.Button("🔍 Get Assessment", variant="primary")
 
-            answer_output = gr.Textbox(label="Answer", lines=4, interactive=False)
+            answer_output = gr.Textbox(label="Intelligence Assessment", lines=4, interactive=False)
+            ioc_output = gr.Markdown(label="Extracted IOCs", visible=True)
             sources_output = gr.Markdown(label="Retrieved Sources", visible=True)
 
     upload_btn.click(fn=process_document, inputs=file_input, outputs=upload_status)
-    ask_btn.click(fn=answer_question, inputs=[question_input, show_sources], outputs=[answer_output, sources_output])
+    url_btn.click(fn=index_from_url, inputs=url_input, outputs=upload_status)
+    ask_btn.click(
+        fn=answer_question,
+        inputs=[question_input, show_sources],
+        outputs=[answer_output, ioc_output, sources_output],
+    )
 
     gr.Examples(
         examples=[
-            ["What is the main topic of this document?"],
-            ["What methods or approaches are described?"],
-            ["What are the key conclusions or findings?"],
+            ["What TTPs does APT29 use for lateral movement?"],
+            ["Which CVEs in this advisory affect Windows Server?"],
+            ["What IOCs are associated with the Lazarus Group?"],
+            ["What MITRE ATT&CK techniques are referenced in this report?"],
         ],
         inputs=question_input,
     )

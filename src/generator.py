@@ -16,16 +16,22 @@ except ImportError:
     from .config_utils import load_config
 
 
-PROMPT_TEMPLATE = """Answer the question using only the provided context.
-If the answer cannot be found in the context, say "I don't have enough information to answer this."
-Write a concise answer in plain language.
+PROMPT_TEMPLATE = """You are a Cyber Threat Intelligence (CTI) analyst assistant.
+Answer the analyst's question using ONLY the provided threat intelligence context below.
+If the answer is not found in the context, say "Insufficient intelligence in the loaded documents to answer this."
+
+When relevant, reference:
+- MITRE ATT&CK tactic and technique IDs (e.g., T1059 - Command and Scripting Interpreter)
+- Threat actor names or groups mentioned in the context
+- CVE identifiers if present
+- IOCs (IPs, domains, file hashes) if mentioned
 
 Context:
 {context}
 
-Question: {question}
+Analyst Question: {question}
 
-Answer:"""
+Intelligence Assessment:"""
 
 
 class OpenRouterRateLimitError(RuntimeError):

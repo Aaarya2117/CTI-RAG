@@ -1,108 +1,158 @@
-# RAG Document Q&A
+<div align="center">
 
-A minimal Retrieval-Augmented Generation (RAG) pipeline built from scratch.
-Upload any PDF or TXT → ask questions → get answers grounded in the document.
+# 🛡️ CTI-RAG: Cyber Threat Intelligence Q&A
 
-## Architecture
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![FAISS](https://img.shields.io/badge/FAISS-CPU-green?style=for-the-badge&logo=meta&logoColor=white)](https://github.com/facebookresearch/faiss)
+[![Gemini](https://img.shields.io/badge/Gemini-2.5_Flash-orange?style=for-the-badge&logo=google&logoColor=white)](https://deepmind.google/technologies/gemini/)
+[![License](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)](LICENSE)
 
-```text
-Document (.pdf/.txt)
-    │
-    ▼
-[Ingest + Chunk]  →  ~300-word overlapping windows
-    │
-    ▼
-[Embed]           →  sentence-transformers/all-MiniLM-L6-v2 (384-dim)
-    │
-    ▼
-[FAISS Index]     →  IndexFlatIP (cosine similarity)
-    │
-    ▼
-User Query → [Embed Query] → [Top-K Retrieval] → [Prompt] → [Gemma / Flan-T5]
-                                                                      │
-                                                                      ▼
-                                                                   Answer
+*A Retrieval-Augmented Generation (RAG) assistant for querying cybersecurity threat reports, CISA advisories, and CVE feeds using natural language.*
+
+[Features](#-key-features) • [Architecture](#-architecture) • [Getting Started](#-getting-started) • [Usage](#-usage)
+
+</div>
+
+---
+
+## 🎯 Overview
+
+**CTI-RAG** transforms unstructured cyber threat intelligence into an interactive, queryable knowledge base. Designed specifically for security analysts, this system allows you to feed it real-world threat reports (PDFs, TXT, JSON CVEs, or direct URLs) and query them using natural language. 
+
+Built from scratch—without heavy abstraction frameworks like LangChain—it prioritizes performance, transparency, and explicit extraction of Indicators of Compromise (IOCs).
+
+---
+
+## ✨ Key Features
+
+- 📄 **Multi-Format Ingestion:** Seamlessly parse PDFs, Text files, NVD JSON CVE feeds, and direct HTML/PDF URLs.
+- 🔗 **Source Attribution:** Every chunk of text carries its source file name and ingestion timestamp, ensuring analysts can always trace claims back to the original report.
+- 🎯 **Automated IOC Extraction:** Built-in regex pipelines automatically extract and surface:
+  - CVE Identifiers
+  - IPv4 Addresses
+  - MD5 / SHA256 Hashes
+  - Malicious Domains
+  - MITRE ATT&CK Technique IDs
+- 🧠 **CTI-Tuned Generation:** The underlying LLM is prompted specifically to act as a threat analyst, prioritizing MITRE ATT&CK mappings, threat actor attributions, and defensive mitigations.
+- 🌱 **Seed Corpus:** Includes an automated script (`scripts/seed_corpus.py`) to download real-world CISA advisories and MITRE reports to bootstrap your testing environment.
+- 🖥️ **Interactive Web UI:** Features a sleek Gradio-based interface for uploading documents, pasting URLs, and viewing extracted IOCs alongside generated assessments.
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+graph TD
+    A[Threat Intel Source<br/>PDF / TXT / JSON / URL] --> B(Ingestion & Chunking)
+    B -->|~300 words + Metadata| C(Embedding Model<br/>Gemini / MiniLM)
+    C --> D[(FAISS Vector Index<br/>Cosine Similarity)]
+    
+    E[Analyst Query] --> F(Embed Query)
+    D <-->|Top-K Retrieval| F
+    
+    F --> G(CTI Prompt Construction)
+    G --> H(LLM Generation<br/>Gemini / Flan-T5)
+    
+    H --> I[Intelligence Assessment]
+    H --> J(IOC Extraction Regex)
+    J --> K[Structured IOCs]
 ```
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-| Component    | Library                             |
-|--------------|-------------------------------------|
-| Ingestion    | PyMuPDF                             |
-| Embeddings   | sentence-transformers (MiniLM-L6)   |
-| Vector Store | FAISS (IndexFlatIP)                 |
-| Generation   | OpenRouter Gemma 4 31B or local Flan-T5 |
-| UI           | Gradio                              |
+| Component | Technology | Description |
+| :--- | :--- | :--- |
+| **Ingestion** | `PyMuPDF`, `urllib` | Fast PDF and web scraping |
+| **Embeddings** | `google-genai`, `sentence-transformers` | Gemini Embedding API (3072-dim) or local MiniLM (384-dim) |
+| **Vector Store** | `FAISS` | Facebook AI Similarity Search (IndexFlatIP) |
+| **LLM Generation** | `Gemini 2.5 Flash`, `Flan-T5` | High-speed cloud generation with local CPU fallback |
+| **UI** | `Gradio` | Interactive web interface |
 
-## Evaluation Results
+---
 
-| Metric                   | Score |
-|--------------------------|-------|
-| Retrieval Accuracy       | —     |
-| Avg Keyword Match Score  | —     |
+## 🚀 Getting Started
 
-> Fill in from `results/eval_results.json` after running evaluate.py
-
-## How to Run
+### 1. Prerequisites
+Ensure you have Python 3.9+ installed.
 
 ```bash
+# Clone the repository
+git clone https://github.com/Aaarya2117/RAG_Document_QA.git
+cd RAG_Document_QA
+
+# Install required dependencies
 pip install -r requirements.txt
-# Add a document to data/documents/
-export OPENROUTER_API_KEY="your_openrouter_key"
-python src/pipeline.py    # terminal Q&A
-python src/app.py         # Gradio UI at localhost:7860
 ```
 
-The default generator is OpenRouter's free `google/gemma-4-31b-it:free` model.
-This project does not require an OpenAI API key. Do not commit real API keys;
-put `OPENROUTER_API_KEY` in your shell environment or in a local `.env` file.
-Free hosted models can be rate-limited during busy periods; by default the app
-falls back to `google/flan-t5-small` locally if OpenRouter returns a rate-limit
-error.
+### 2. Configuration & API Keys
+The project uses the Gemini API by default for high-quality embeddings and generation.
 
-For a key-free local fallback, set this in `config.yaml`:
+```bash
+export GEMINI_API_KEY="your_gemini_api_key_here"
+```
 
+*(Optional)* For a completely local, offline, and key-free deployment, edit `config.yaml`:
 ```yaml
 generation_provider: "local"
 generation_model: "google/flan-t5-small"
 ```
 
-The first local run downloads the embedding and generator models from
-Hugging Face, then reuses the local cache.
-
-## Optional Hosted Generation
-
-To use the Hugging Face Inference API instead of OpenRouter:
-
-1. Set `generation_provider: "hf_inference_api"` in `config.yaml`.
-2. Export a token before running the app:
-
+### 3. Bootstrap the Corpus
+Download a sample set of real-world threat reports (MITRE ATT&CK, NIST IR, FBI IC3):
 ```bash
-export HF_API_TOKEN="your_huggingface_token"
+python scripts/seed_corpus.py
+```
+
+---
+
+## 💻 Usage
+
+### Launch the Web UI
+The easiest way to interact with CTI-RAG is via the web interface.
+```bash
 python src/app.py
 ```
+*Navigate to `http://localhost:7860` in your browser.*
 
-Do not commit real API keys. `.env` is ignored; `.env.example` is included only
-as a template.
+### Command-Line Interface
+For terminal-based interaction:
+```bash
+python src/pipeline.py
+```
 
-## Project Structure
+### Example Queries
+Try these out once you have ingested a threat report:
+> 🗣️ *"What TTPs does APT29 use for lateral movement?"*  
+> 🗣️ *"Which CVEs in this advisory affect Windows Server?"*  
+> 🗣️ *"What IOCs are associated with the Lazarus Group?"*  
+> 🗣️ *"What MITRE ATT&CK techniques are used for credential access?"*  
+> 🗣️ *"What defensive mitigations are recommended against LOTL techniques?"*
+
+---
+
+## 📂 Project Structure
 
 ```text
-rag-document-qa/
-├── config.yaml
-├── requirements.txt
+CTI-RAG/
+├── config.yaml                 # Core configuration (chunking, models, paths)
+├── requirements.txt            # Python dependencies
+├── scripts/
+│   └── seed_corpus.py          # Auto-downloads public threat intel PDFs
 ├── src/
-│   ├── ingest.py       # PDF/TXT loading + chunking
-│   ├── embeddings.py   # sentence-transformers + FAISS index build
-│   ├── retriever.py    # cosine similarity retrieval
-│   ├── generator.py    # OpenRouter / Flan-T5 local / HF Inference API
-│   ├── pipeline.py     # end-to-end wiring
-│   ├── evaluate.py     # retrieval accuracy + keyword match eval
-│   └── app.py          # Gradio web UI
+│   ├── ingest.py               # Document loading, chunking, and metadata tagging
+│   ├── ioc_extractor.py        # Regex-based IOC extraction engine
+│   ├── embeddings.py           # Vector embedding and FAISS index management
+│   ├── retriever.py            # Cosine similarity search implementation
+│   ├── generator.py            # Multi-provider LLM generation & CTI prompting
+│   ├── pipeline.py             # End-to-end RAG pipeline wiring
+│   └── app.py                  # Gradio Web UI implementation
 ├── data/
-│   ├── documents/      # put your PDFs/TXTs here
-│   ├── index/          # FAISS index + chunks (auto-generated)
-│   └── eval_qa.json    # your hand-crafted Q&A pairs
+│   ├── documents/              # Storage for raw threat reports (PDF, TXT, JSON)
+│   ├── index/                  # Serialized FAISS index and chunk metadata
+│   └── eval_qa.json            # Benchmark Q&A pairs for automated evaluation
 └── results/
-    └── eval_results.json
+    └── eval_results.json       # Generated evaluation metrics
 ```
+
+---
+*Built for Security Analysts. Grounded in Threat Intelligence.*

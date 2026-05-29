@@ -13,12 +13,14 @@ try:
     from embeddings import load_embedding_model, load_index, build_and_save_index
     from retriever import Retriever
     from generator import build_generator
+    from ioc_extractor import extract_from_result
 except ImportError:
     from .config_utils import PROJECT_ROOT
     from .ingest import ingest_document, load_chunks, load_config
     from .embeddings import load_embedding_model, load_index, build_and_save_index
     from .retriever import Retriever
     from .generator import build_generator
+    from .ioc_extractor import extract_from_result
 
 
 class RAGPipeline:
@@ -73,11 +75,17 @@ class RAGPipeline:
 
         answer = self.generator.generate(context, question)
 
+        iocs = extract_from_result({
+            "answer": answer,
+            "retrieved_chunks": retrieved,
+        })
+
         return {
             "question": question,
             "answer": answer,
             "retrieved_chunks": retrieved,
             "context_used": context,
+            "iocs": iocs,
         }
 
 
