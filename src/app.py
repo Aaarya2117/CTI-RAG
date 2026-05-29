@@ -74,7 +74,33 @@ def answer_question(question: str, show_sources: bool) -> tuple[str, str, str]:
         return f"Error: {str(e)}", "", ""
 
 
-with gr.Blocks(title="🛡️ CTI Threat Intelligence Q&A", theme=gr.themes.Soft()) as demo:
+custom_css = """
+footer {visibility: hidden !important; display: none !important;}
+"""
+
+purple_theme = gr.themes.Soft(
+    primary_hue="purple",
+    secondary_hue="purple",
+).set(
+    body_background_fill="#ffffff",
+    body_background_fill_dark="#1a1025",
+    block_background_fill="#faf5ff",
+    block_background_fill_dark="#2d1b3e",
+    block_label_background_fill="#f3e8ff",
+    block_label_background_fill_dark="#3b2353",
+    block_label_text_color="#6b21a8",
+    block_label_text_color_dark="#e9d5ff",
+    button_primary_background_fill="#7e22ce",
+    button_primary_background_fill_dark="#9333ea",
+    button_secondary_background_fill="#f3e8ff",
+    button_secondary_background_fill_dark="#4c1d95",
+    button_secondary_text_color="#6b21a8",
+    button_secondary_text_color_dark="#e9d5ff",
+    border_color_primary="#d8b4fe",
+    border_color_primary_dark="#6b21a8",
+)
+
+with gr.Blocks(title="🛡️ CTI Threat Intelligence Q&A", theme=purple_theme, css=custom_css) as demo:
     gr.Markdown("""
     # 🛡️ CTI Threat Intelligence Q&A
     Upload a threat report (PDF/TXT/JSON) or paste a URL to a CISA advisory, then ask security-specific questions.
@@ -133,4 +159,4 @@ with gr.Blocks(title="🛡️ CTI Threat Intelligence Q&A", theme=gr.themes.Soft
 
 
 if __name__ == "__main__":
-    demo.launch(share=False, server_name="0.0.0.0", server_port=7860)
+    demo.launch(share=False, server_name="0.0.0.0", server_port=7860, show_api=False)
