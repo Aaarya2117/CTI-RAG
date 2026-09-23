@@ -4,7 +4,10 @@ Load and chunk PDF, TXT, JSON CVE, or URL-based documents into overlapping text 
 This is the first stage of the CTI-RAG pipeline.
 """
 
+import os
+os.environ.setdefault("USE_TF", "0")
 import re
+
 import json
 import pickle
 import datetime
@@ -17,6 +20,37 @@ try:
     from config_utils import PROJECT_ROOT, load_config
 except ImportError:
     from .config_utils import PROJECT_ROOT, load_config
+
+try:
+    from laya_layer import tag_chunk
+except ImportError:
+    try:
+        from .laya_layer import tag_chunk
+    except ImportError:
+        tag_chunk = None
+
+try:
+    from ioc_extractor import extract_iocs
+except ImportError:
+    try:
+        from .ioc_extractor import extract_iocs
+    except ImportError:
+        extract_iocs = None
+
+
+def _extract_chunk_iocs(text: str) -> Dict:
+    """Extract IOCs using ioc_extractor if available, or regex fallback."""
+    if extract_iocs is not None:
+        return extract_iocs(text)
+    cves = list(set(re.findall(r"CVE-\d{4}-\d{4,7}", text)))
+    ttps = list(set(re.findall(r"T\d{4}(?:\.\d{3})?", text)))
+    iocs = {}
+    if cves:
+        iocs["cve_ids"] = cves
+    if ttps:
+        iocs["mitre_attack"] = ttps
+    return iocs
+
 
 
 def load_pdf(file_path: str) -> str:
@@ -158,16 +192,46 @@ def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> List[Dict]:
 
 
 def ingest_document(file_path: str, cfg: dict) -> List[Dict]:
-    """Full ingestion pipeline: load → clean → chunk."""
+    """Full ingestion pipeline: load → clean → chunk → tag with Laya."""
     raw_text = load_document(file_path)
     clean = clean_text(raw_text)
     chunks = chunk_text(clean, cfg["chunk_size"], cfg["chunk_overlap"])
 
-    # Inject source metadata into each chunk
+    enable_laya_tagging = cfg.get("enable_laya_tagging", True)
+    tag_success_count = 0
+
+    # Inject source metadata, extracted IOCs, and Laya tags into each chunk
     source_name = file_path if file_path.startswith("http") else Path(file_path).name
     for chunk in chunks:
         chunk["source"] = source_name
         chunk["ingested_at"] = datetime.datetime.utcnow().isoformat()
+
+        chunk_iocs = _extract_chunk_iocs(chunk["text"])
+        chunk["extracted_iocs"] = chunk_iocs
+
+        if enable_laya_tagging and tag_chunk is not None:
+            try:
+                tags = tag_chunk(chunk["text"], chunk_iocs)
+                chunk["laya_tags"] = tags
+                tag_success_count += 1
+            except Exception as exc:
+                print(f"Warning: Laya tagging failed for chunk {chunk['chunk_id']}: {exc}")
+                chunk["laya_tags"] = {
+                    "category": "general",
+                    "severity": "medium",
+                    "references_active_cve": bool(chunk_iocs.get("cve_ids")),
+                }
+        else:
+            chunk["laya_tags"] = {
+                "category": "general",
+                "severity": "medium",
+                "references_active_cve": bool(chunk_iocs.get("cve_ids")),
+            }
+
+    if enable_laya_tagging and tag_chunk is not None:
+        print(f"Laya tagging applied to {tag_success_count}/{len(chunks)} chunks.")
+    else:
+        print("Laya tagging skipped (disabled or module unavailable).")
 
     Path(cfg["chunks_save_path"]).parent.mkdir(parents=True, exist_ok=True)
     with open(cfg["chunks_save_path"], "wb") as f:
@@ -187,10 +251,14 @@ if __name__ == "__main__":
     import sys
     cfg = load_config()
 
-    test_files = list((PROJECT_ROOT / "data" / "documents").glob("*.*"))
+    test_files = [
+        f for f in (PROJECT_ROOT / "data" / "documents").glob("*.*")
+        if f.is_file() and f.suffix.lower() in (".pdf", ".txt", ".json") and not f.name.startswith(".")
+    ]
     if not test_files:
         print("No documents found in data/documents/. Add a .pdf or .txt file first.")
         sys.exit(0)
+
 
     chunks = ingest_document(str(test_files[0]), cfg)
     if chunks:

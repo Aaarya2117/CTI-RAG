@@ -8,3 +8,6 @@ data/documents/
 *.index
 *.pkl
 .gradio/
+.superpowers/
+.venv/
+

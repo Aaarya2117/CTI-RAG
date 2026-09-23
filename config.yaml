@@ -3,21 +3,23 @@ chunk_size: 300           # tokens per chunk (approximate, measured in words)
 chunk_overlap: 50         # overlapping words between consecutive chunks
 
 # Embedding config
-embedding_provider: "gemini_api"
-embedding_model: "gemini-embedding-2"
-embedding_dim: 3072
+embedding_provider: "local"
+embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+embedding_dim: 384
 
 # Retrieval config
 top_k: 4                  # number of chunks to retrieve per query
 
 # Generation config
-# Providers: "openrouter" (hosted API), "gemini_api" (Google), "local" (Flan-T5), "hf_inference_api"
+# Providers: "gemini_api" (Google), "openrouter" (hosted API), "local" (Flan-T5), "hf_inference_api"
 generation_provider: "gemini_api"
 generation_model: "gemini-2.5-flash"
+gemini_api_key: ""             # optional fallback; prefer GEMINI_API_KEY in .env or environment
+
 
 # OpenRouter config
 openrouter_api_key: ""         # optional fallback; prefer OPENROUTER_API_KEY in .env or environment
-openrouter_site_url: ""
+openrouter_site_url: "https://github.com/Aaarya2117/CTI-RAG"
 openrouter_app_name: "CTI-RAG"
 fallback_to_local_on_rate_limit: false
 local_fallback_model: "google/flan-t5-small"
@@ -27,7 +29,12 @@ use_hf_inference_api: false    # legacy option; ignored when generation_provider
 hf_api_token: ""               # optional fallback; prefer the HF_API_TOKEN environment variable
 max_new_tokens: 256
 max_input_tokens: 512
-temperature: 0.3
+temperature: 0.2
+
+# Laya typed-decision config
+enable_laya_tagging: true      # tag chunks with category/severity/active_cve during ingestion
+enable_laya_routing: true      # route query for intent and scope guardrails
+enable_laya_gating: true       # evaluate answers for grounding and ID citation
 
 # Paths
 index_save_path: "./data/index/faiss.index"
@@ -36,3 +43,4 @@ chunks_save_path: "./data/index/chunks.pkl"
 # Evaluation
 eval_qa_path: "./data/eval_qa.json"
 results_path: "./results/eval_results.json"
+

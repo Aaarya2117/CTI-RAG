@@ -7,7 +7,13 @@ Metrics: retrieval accuracy (did the right chunk get retrieved?) + answer releva
 import json
 import yaml
 from pathlib import Path
-from pipeline import RAGPipeline, load_config
+
+try:
+    from pipeline import RAGPipeline, load_config
+except ImportError:
+    from src.pipeline import RAGPipeline
+    from src.config_utils import load_config
+
 
 
 EVAL_QA_TEMPLATE = [

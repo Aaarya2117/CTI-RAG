@@ -6,11 +6,21 @@ Run: python app.py
 
 import gradio as gr
 from pathlib import Path
-from pipeline import RAGPipeline, load_config
 
+try:
+    from pipeline import RAGPipeline, load_config
+except ImportError:
+    from src.pipeline import RAGPipeline
+    from src.config_utils import load_config
 
 cfg = load_config()
 pipeline = RAGPipeline(cfg)
+if Path(cfg["index_save_path"]).exists() and Path(cfg["chunks_save_path"]).exists():
+    try:
+        pipeline.load_existing_index()
+    except Exception as e:
+        print(f"Notice: Could not load index on startup ({e})")
+
 
 
 def process_document(file_obj) -> str:
@@ -60,14 +70,27 @@ def answer_question(question: str, show_sources: bool) -> tuple[str, str, str]:
         sources = ""
         if show_sources:
             sources_parts = []
-            for chunk in result["retrieved_chunks"]:
+            for chunk in result.get("retrieved_chunks", []):
                 src = chunk.get("source", "unknown")
                 score = chunk.get("score", 0)
+                boost_str = f" | Boosted: {chunk.get('boosted_score'):.3f}" if "boosted_score" in chunk else ""
+                laya_tags = chunk.get("laya_tags") or {}
+                cat = laya_tags.get("category", "")
+                cat_str = f" | Category: {cat}" if cat else ""
                 sources_parts.append(
-                    f"**Source: {src}** (relevance: {score:.3f})\n"
+                    f"**Source: {src}** (relevance: {score:.3f}{boost_str}{cat_str})\n"
                     f"{chunk['text'][:300]}..."
                 )
             sources = "\n\n---\n\n".join(sources_parts)
+
+        # Append Laya decision summary to answer if present
+        routing = result.get("routing") or {}
+        gate = result.get("gate") or {}
+        intent = routing.get("intent", {}).get("choice") if isinstance(routing.get("intent"), dict) else routing.get("intent")
+        cites = gate.get("cites_id", {}).get("noul") if isinstance(gate.get("cites_id"), dict) else None
+        if intent:
+            cites_str = f" | Citation Confidence: {cites:.1%}" if cites is not None else ""
+            answer += f"\n\n---\n*🛡️ Laya Routing Intent: `{intent}`{cites_str}*"
 
         return answer, ioc_text, sources
     except Exception as e:
@@ -100,7 +123,7 @@ purple_theme = gr.themes.Soft(
     border_color_primary_dark="#6b21a8",
 )
 
-with gr.Blocks(title="🛡️ CTI Threat Intelligence Q&A", theme=purple_theme, css=custom_css) as demo:
+with gr.Blocks(title="🛡️ CTI Threat Intelligence Q&A") as demo:
     gr.Markdown("""
     # 🛡️ CTI Threat Intelligence Q&A
     Upload a threat report (PDF/TXT/JSON) or paste a URL to a CISA advisory, then ask security-specific questions.
@@ -159,4 +182,4 @@ with gr.Blocks(title="🛡️ CTI Threat Intelligence Q&A", theme=purple_theme, 
 
 
 if __name__ == "__main__":
-    demo.launch(share=False, server_name="0.0.0.0", server_port=7860, show_api=False)
+    demo.launch(share=False, server_name="0.0.0.0", server_port=7860, theme=purple_theme, css=custom_css)

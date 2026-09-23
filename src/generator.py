@@ -8,12 +8,115 @@ Supports:
 """
 
 import os
+os.environ.setdefault("USE_TF", "0")
 import requests
+
+from typing import Optional
+
+try:
+    from langchain_openai import ChatOpenAI
+except ImportError:
+    ChatOpenAI = None
 
 try:
     from config_utils import load_config
 except ImportError:
     from .config_utils import load_config
+
+try:
+    from laya_layer import gate_answer
+except ImportError:
+    try:
+        from .laya_layer import gate_answer
+    except ImportError:
+        gate_answer = None
+
+
+def is_grounded(gate_result: dict, threshold: float = 0.5) -> bool:
+    """Helper to check if gate result meets grounding threshold."""
+    grounded = gate_result.get("grounded")
+    if grounded is None:
+        return True
+    if isinstance(grounded, bool):
+        return grounded
+    if isinstance(grounded, (int, float)):
+        return float(grounded) >= threshold
+    if isinstance(grounded, dict):
+        if "choice" in grounded:
+            val = grounded["choice"]
+            return val if isinstance(val, bool) else str(val).lower() in ("yes", "true", "1")
+        if "prob" in grounded:
+            return float(grounded["prob"]) >= threshold
+        if "score" in grounded:
+            return float(grounded["score"]) >= threshold
+        if "answer" in grounded:
+            ans = grounded["answer"]
+            return ans if isinstance(ans, bool) else str(ans).lower() in ("yes", "true", "1")
+    return True
+
+
+def gate(answer_text: str, retrieved_ids: Optional[list] = None) -> dict:
+    """
+    Run Laya post-generation gating on answer text.
+    Evaluates whether the answer is grounded in provided context and cites IDs.
+    Returns:
+        dict with gate decision metadata, e.g.
+        {"grounded": bool/float, "cites_id": bool, "available": bool}
+    """
+    if retrieved_ids is None:
+        retrieved_ids = []
+
+    if gate_answer is None:
+        return {
+            "grounded": True,
+            "cites_id": False,
+            "available": False,
+            "note": "Laya gate_answer unavailable",
+        }
+
+    try:
+        decision = gate_answer(answer_text, retrieved_ids)
+        if isinstance(decision, dict):
+            res = dict(decision)
+            res["available"] = True
+            return res
+        return {"grounded": True, "cites_id": False, "raw": decision, "available": True}
+    except Exception as exc:
+        print(f"Warning: Laya gate_answer failed: {exc}")
+        return {
+            "grounded": True,
+            "cites_id": False,
+            "available": False,
+            "error": str(exc),
+        }
+
+
+class BaseGenerator:
+    """Base class providing common Laya gating interface across all generators."""
+
+    def generate(self, context: str, question: str) -> str:
+        raise NotImplementedError
+
+    def gate(self, answer_text: str, retrieved_ids: Optional[list] = None) -> dict:
+        """Run Laya gate on answer."""
+        return gate(answer_text, retrieved_ids)
+
+    def generate_with_gate(
+        self,
+        context: str,
+        question: str,
+        retrieved_ids: Optional[list] = None,
+    ) -> dict:
+        """Generate answer and evaluate with Laya gating."""
+        answer = self.generate(context, question)
+        gate_decision = self.gate(answer, retrieved_ids or [])
+        return {
+            "answer": answer,
+            "gate": gate_decision,
+            "grounded": gate_decision.get("grounded", True),
+            "cites_id": gate_decision.get("cites_id", False),
+        }
+
 
 
 PROMPT_TEMPLATE = """You are a Cyber Threat Intelligence (CTI) analyst assistant.
@@ -38,7 +141,7 @@ class OpenRouterRateLimitError(RuntimeError):
     """Raised when a free OpenRouter provider is temporarily rate-limited."""
 
 
-class LocalGenerator:
+class LocalGenerator(BaseGenerator):
     """
     Uses Flan-T5 locally via HuggingFace Transformers.
     Works on CPU. Good for development and demo.
@@ -76,10 +179,108 @@ class LocalGenerator:
         return self.tokenizer.decode(output_ids[0], skip_special_tokens=True).strip()
 
 
-class OpenRouterGenerator:
+class OpenRouterLangChainGenerator(BaseGenerator):
     """
-    Uses OpenRouter's OpenAI-compatible chat completions API.
-    Requires OPENROUTER_API_KEY in the environment or a local .env file.
+    Uses OpenRouter via LangChain ChatOpenAI.
+    API key is read from OPENROUTER_API_KEY or config.
+    Offline initialization is supported gracefully without raising errors.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "google/gemini-2.5-flash",
+        api_key: Optional[str] = None,
+        temperature: float = 0.2,
+        base_url: str = "https://openrouter.ai/api/v1",
+        default_headers: Optional[dict] = None,
+        max_new_tokens: Optional[int] = None,
+        site_url: Optional[str] = None,
+        app_name: Optional[str] = None,
+        **kwargs,
+    ):
+        self.model_name = model_name
+        self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY") or ""
+        self.temperature = temperature
+        self.base_url = base_url
+        self.max_new_tokens = max_new_tokens
+
+        headers = {
+            "HTTP-Referer": site_url or "https://github.com/Aaarya2117/CTI-RAG",
+            "X-Title": app_name or "CTI-RAG",
+        }
+        if default_headers:
+            headers.update(default_headers)
+        self.default_headers = headers
+
+        self.llm = None
+        if self.api_key:
+            self._init_llm()
+        else:
+            print(
+                "Notice: OPENROUTER_API_KEY is not set. OpenRouter generator initialized in offline mode. "
+                "Set OPENROUTER_API_KEY before invoking .generate()."
+            )
+
+    def _init_llm(self):
+        global ChatOpenAI
+        if ChatOpenAI is None:
+            from langchain_openai import ChatOpenAI
+
+        init_kwargs = {
+            "model": self.model_name,
+            "api_key": self.api_key,
+            "base_url": self.base_url,
+            "temperature": self.temperature,
+            "default_headers": self.default_headers,
+        }
+        if self.max_new_tokens:
+            init_kwargs["max_tokens"] = self.max_new_tokens
+
+        self.llm = ChatOpenAI(**init_kwargs)
+        print(f"OpenRouter ChatOpenAI generator configured: {self.model_name}")
+
+    def generate(self, context: str, question: str) -> str:
+        if not self.api_key:
+            self.api_key = os.environ.get("OPENROUTER_API_KEY") or ""
+        if not self.api_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY is required to generate answers with OpenRouter. "
+                "Set OPENROUTER_API_KEY in your environment or local .env file."
+            )
+        if self.llm is None:
+            self._init_llm()
+
+        prompt = PROMPT_TEMPLATE.format(context=context, question=question)
+        try:
+            response = self.llm.invoke(prompt)
+            content = response.content if hasattr(response, "content") else str(response)
+            if isinstance(content, list):
+                parts = []
+                for part in content:
+                    if isinstance(part, str):
+                        parts.append(part)
+                    elif isinstance(part, dict) and "text" in part:
+                        parts.append(part["text"])
+                    else:
+                        parts.append(str(part))
+                content = "".join(parts)
+            return content.strip() if content else ""
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "rate limit" in err_str.lower():
+                raise OpenRouterRateLimitError(
+                    f"OpenRouter provider is temporarily rate-limited: {err_str}"
+                ) from e
+            raise
+
+
+OpenRouterGenerator = OpenRouterLangChainGenerator
+
+
+class LegacyOpenRouterGenerator(BaseGenerator):
+    """
+    Direct HTTP requests generator for OpenRouter API.
+    Preserved for backward-compatibility.
     """
 
     API_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -104,7 +305,7 @@ class OpenRouterGenerator:
             self.headers["HTTP-Referer"] = site_url
         if app_name:
             self.headers["X-Title"] = app_name
-        print(f"OpenRouter generator configured: {model_name}")
+        print(f"Legacy OpenRouter generator configured: {model_name}")
 
     def generate(self, context: str, question: str) -> str:
         prompt = PROMPT_TEMPLATE.format(context=context, question=question)
@@ -132,16 +333,16 @@ class OpenRouterGenerator:
         choices = data.get("choices", [])
         if not choices:
             raise RuntimeError(f"OpenRouter returned no choices: {data}")
-            
+
         message_data = choices[0]["message"]
         content = message_data.get("content")
-        
+
         if content is None:
             refusal = message_data.get("refusal")
             if refusal:
                 return f"Model refused to answer: {refusal}"
             return "Error: The model returned an empty response (content is null)."
-            
+
         return content.strip()
 
     @staticmethod
@@ -157,7 +358,7 @@ class OpenRouterGenerator:
         return str(error)
 
 
-class LocalFallbackGenerator:
+class LocalFallbackGenerator(BaseGenerator):
     """
     Wraps a hosted generator and falls back to a local model when free hosted
     inference is temporarily unavailable.
@@ -190,7 +391,7 @@ class LocalFallbackGenerator:
             return self.fallback.generate(context, question)
 
 
-class HFInferenceAPIGenerator:
+class HFInferenceAPIGenerator(BaseGenerator):
     """
     Uses the HuggingFace Inference API for larger models (e.g., Mistral-7B).
     Requires a free HF token — get one at huggingface.co/settings/tokens
@@ -226,7 +427,61 @@ class HFInferenceAPIGenerator:
         return str(data).strip()
 
 
-class GeminiAPIGenerator:
+class GeminiLangChainGenerator(BaseGenerator):
+    """Uses Google's Gemini API via LangChain ChatGoogleGenerativeAI."""
+
+    def __init__(self, model_name: str, api_key: Optional[str] = None, temperature: float = 0.2, **kwargs):
+        if model_name.startswith("models/"):
+            model_name = model_name[7:]
+        self.model_name = model_name
+        self.api_key = api_key or os.environ.get("GEMINI_API_KEY") or ""
+        self.temperature = temperature
+        self.llm = None
+        if self.api_key:
+            self._init_llm()
+        else:
+            print("Notice: GEMINI_API_KEY not set. Gemini generator initialized in offline mode.")
+
+    def _init_llm(self):
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            self.llm = ChatGoogleGenerativeAI(
+                model=self.model_name,
+                api_key=self.api_key,
+                temperature=self.temperature,
+            )
+            print(f"Gemini ChatGoogleGenerativeAI configured: {self.model_name}")
+        except Exception as e:
+            print(f"Notice: ChatGoogleGenerativeAI init deferred ({e})")
+
+    def generate(self, context: str, question: str) -> str:
+        if not self.api_key:
+            self.api_key = os.environ.get("GEMINI_API_KEY") or ""
+        if not self.api_key:
+            raise ValueError(
+                "GEMINI_API_KEY is required to generate answers with Gemini. "
+                "Set GEMINI_API_KEY in your environment or local .env file."
+            )
+        if self.llm is None:
+            self._init_llm()
+
+        prompt = PROMPT_TEMPLATE.format(context=context, question=question)
+        response = self.llm.invoke(prompt)
+        content = response.content if hasattr(response, "content") else str(response)
+        if isinstance(content, list):
+            parts = []
+            for part in content:
+                if isinstance(part, str):
+                    parts.append(part)
+                elif isinstance(part, dict) and "text" in part:
+                    parts.append(part["text"])
+                else:
+                    parts.append(str(part))
+            content = "".join(parts)
+        return content.strip() if content else ""
+
+
+class GeminiAPIGenerator(BaseGenerator):
     """Uses Google's Gemini API via google-genai SDK."""
     
     def __init__(self, model_name: str, api_key: str, temperature: float = 0.3):
@@ -256,43 +511,19 @@ class GeminiAPIGenerator:
             return f"Gemini API Error: {str(e)}"
 
 def build_generator(cfg: dict):
-    provider = cfg.get("generation_provider")
+    provider = cfg.get("generation_provider", "gemini_api")
     if not provider:
-        provider = "hf_inference_api" if cfg.get("use_hf_inference_api") else "local"
+        provider = "gemini_api"
     provider = provider.lower()
 
-    if provider == "openrouter":
-        token = cfg.get("openrouter_api_key") or os.getenv("OPENROUTER_API_KEY")
-        if not token:
-            raise ValueError(
-                "generation_provider is openrouter but no OpenRouter key was found. "
-                "Set OPENROUTER_API_KEY in your environment or local .env file."
-            )
-        generator = OpenRouterGenerator(
-            cfg["generation_model"],
+    if provider in ("gemini_api", "gemini"):
+        token = cfg.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY") or ""
+        return GeminiLangChainGenerator(
+            cfg.get("generation_model", "gemini-2.5-flash"),
             token,
-            cfg["max_new_tokens"],
-            cfg["temperature"],
-            cfg.get("openrouter_site_url", ""),
-            cfg.get("openrouter_app_name", "RAG Document QA"),
+            cfg.get("temperature", 0.2),
         )
-        if cfg.get("fallback_to_local_on_rate_limit", True):
-            return LocalFallbackGenerator(
-                generator,
-                cfg.get("local_fallback_model", "google/flan-t5-small"),
-                cfg["max_new_tokens"],
-                cfg.get("max_input_tokens", 512),
-            )
-        return generator
 
-    if provider == "gemini_api":
-        token = cfg.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY")
-        if not token:
-            raise ValueError("GEMINI_API_KEY must be set in .env to use the Gemini API.")
-        return GeminiAPIGenerator(
-            cfg["generation_model"], token,
-            cfg.get("temperature", 0.3)
-        )
 
     if provider == "hf_inference_api":
         token = (
@@ -319,7 +550,7 @@ def build_generator(cfg: dict):
 
     raise ValueError(
         f"Unsupported generation_provider: {provider}. "
-        "Use 'openrouter', 'local', or 'hf_inference_api'."
+        "Use 'openrouter', 'gemini_api', 'local', or 'hf_inference_api'."
     )
 
 
@@ -328,5 +559,14 @@ if __name__ == "__main__":
     generator = build_generator(cfg)
     test_context = "The Eiffel Tower is located in Paris, France. It was built in 1889 by Gustave Eiffel."
     test_question = "When was the Eiffel Tower built?"
-    answer = generator.generate(test_context, test_question)
-    print(f"Q: {test_question}\nA: {answer}")
+    try:
+        answer = generator.generate(test_context, test_question)
+        print(f"Q: {test_question}\nA: {answer}")
+    except ValueError as exc:
+        print(f"Generator initialized successfully ({type(generator).__name__}). Offline mode check: {exc}")
+
+    print("\nTesting Laya gate helper:")
+    sample_answer = "The vulnerability CVE-2023-38606 is an elevation of privilege flaw associated with T1059."
+    gate_decision = generator.gate(sample_answer, ["CVE-2023-38606", "T1059"])
+    print(f"Gate output: {gate_decision}")
+

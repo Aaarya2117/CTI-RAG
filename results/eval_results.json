@@ -1,1 +1,100 @@
-{}
+{
+  "total_questions": 6,
+  "retrieval_accuracy": 0.3333333333333333,
+  "avg_keyword_match_score": 0.4444444444444445,
+  "per_question_results": [
+    {
+      "question": "What TTPs does APT29 use for initial access and lateral movement?",
+      "answer": "APT29 (Cozy Bear, The Dukes, NOBELIUM) uses the following TTPs for initial access and lateral movement:\n\n**Initial Access:**\n*   **Spearphishing Attachment (T1566.001)**: APT29 used spearphishing emails containing malicious ISO files. These emails were sent from compromised accounts at legitimate organizations and referenced diplomatic meetings to increase credibility.\n    *   Exploited **CVE-2023-23397** (Microsoft Outlook Elevation of Privilege) and **CVE-2024-21412** (Internet Shortcut Files Security Feature Bypass) via the malicious ISO files.\n    *   **IOCs:**\n        *   Phishing sender IPs: 185.220.101.34, 91.234.56.78\n        *   Malicious domains: update-service.microsoftonline-security.com, auth-portal.cloud-365.org\n        *   ISO file hash (SHA256): a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2\n        *   ISO file hash (MD5): 5d41402abc4b2a76b9719d911017c592\n*   **Exploitation of CVE-2023-36884**: Used as an alternative initial access vector through weaponized Office documents.\n*   **Exploitation of CVE-2024-3400**: Exploited vulnerable Palo Alto Networks PAN-OS VPN concentrators for network access at select targets.\n\n**Lateral Movement:**\n*   **Remote Desktop Protocol (T1021.001)**: Used stolen credentials to RDP into additional systems.\n*   **Windows Remote Management (T1021.006)**: Leveraged WinRM for remote command execution.\n*   **Pass-the-Hash (T1550.002)**: Extracted NTLM hashes from LSASS memory using a custom variant of Mimikatz.\n    *   Credential access for this technique was achieved through:\n        *   **LSASS Memory (T1003.001)**: Used comsvcs.dll MiniDump technique.\n        *   **Security Account Manager (T1003.002)**: Extracted SAM database from registry.\n        *   **DCSync (T1003.006)**: Replicated directory data from domain controllers.",
+      "expected_keywords": [
+        "phishing",
+        "spearphishing",
+        "lateral movement",
+        "T1566",
+        "T1021",
+        "APT29",
+        "Cozy Bear"
+      ],
+      "keyword_match_score": 1.0,
+      "retrieval_hit": true,
+      "top_chunk_text": "THREAT INTELLIGENCE REPORT: APT29 (Cozy Bear) Campaign Analysis ================================================================ Report Date: 2024-11-15 Classification: TLP:WHITE Prepared by: CTI Anal",
+      "top_chunk_score": 0.18541496992111206
+    },
+    {
+      "question": "Which CVEs are exploited by the Volt Typhoon threat group?",
+      "answer": "Insufficient intelligence in the loaded documents to answer this.",
+      "expected_keywords": [
+        "CVE",
+        "Volt Typhoon",
+        "living off the land",
+        "LOTL"
+      ],
+      "keyword_match_score": 0.0,
+      "retrieval_hit": false,
+      "top_chunk_text": "Feature Bypass Severity: HIGH (CVSS 8.1) Used to bypass Mark-of-the-Web protections on downloaded files. CVE-2023-36884 - Office and Windows HTML RCE Severity: HIGH (CVSS 8.3) Used as an alternative i",
+      "top_chunk_score": 0.49848538637161255
+    },
+    {
+      "question": "What ransomware families are associated with the CL0P group and which vulnerability did they exploit?",
+      "answer": "Insufficient intelligence in the loaded documents to answer this.",
+      "expected_keywords": [
+        "CL0P",
+        "MOVEit",
+        "ransomware",
+        "CVE-2023-34362",
+        "data exfiltration"
+      ],
+      "keyword_match_score": 0.0,
+      "retrieval_hit": false,
+      "top_chunk_text": "Feature Bypass Severity: HIGH (CVSS 8.1) Used to bypass Mark-of-the-Web protections on downloaded files. CVE-2023-36884 - Office and Windows HTML RCE Severity: HIGH (CVSS 8.3) Used as an alternative i",
+      "top_chunk_score": 0.28579044342041016
+    },
+    {
+      "question": "What IOCs such as IP addresses or file hashes are mentioned in the BianLian ransomware advisory?",
+      "answer": "Insufficient intelligence in the loaded documents to answer this.",
+      "expected_keywords": [
+        "BianLian",
+        "ransomware",
+        "IOC",
+        "hash",
+        "IP"
+      ],
+      "keyword_match_score": 0.0,
+      "retrieval_hit": false,
+      "top_chunk_text": "Feature Bypass Severity: HIGH (CVSS 8.1) Used to bypass Mark-of-the-Web protections on downloaded files. CVE-2023-36884 - Office and Windows HTML RCE Severity: HIGH (CVSS 8.3) Used as an alternative i",
+      "top_chunk_score": 0.3397027850151062
+    },
+    {
+      "question": "What MITRE ATT&CK techniques are used for credential access in the loaded threat reports?",
+      "answer": "The MITRE ATT&CK techniques used for credential access are:\n\n*   T1003.001 - LSASS Memory (LSASS Memory Dumping)\n*   T1003.002 - Security Account Manager\n*   T1003.006 - DCSync",
+      "expected_keywords": [
+        "credential",
+        "T1003",
+        "T1555",
+        "LSASS",
+        "dumping",
+        "MITRE"
+      ],
+      "keyword_match_score": 0.8333333333333334,
+      "retrieval_hit": true,
+      "top_chunk_text": "THREAT INTELLIGENCE REPORT: APT29 (Cozy Bear) Campaign Analysis ================================================================ Report Date: 2024-11-15 Classification: TLP:WHITE Prepared by: CTI Anal",
+      "top_chunk_score": 0.41624176502227783
+    },
+    {
+      "question": "What defensive mitigations are recommended against living-off-the-land (LOTL) techniques?",
+      "answer": "The following defensive mitigations are recommended against living-off-the-land (LOTL) techniques:\n\n*   **Credential Hygiene:** Monitor for Pass-the-Hash activity (T1550.002).\n*   **Endpoint Detection:** Deploy behavioral detection for LSASS access (T1003.001), scheduled task creation (T1053.005), and DLL side-loading (T1574.002).\n*   **PowerShell Logging:** Enable ScriptBlock Logging and constrained language mode.",
+      "expected_keywords": [
+        "mitigation",
+        "detection",
+        "logging",
+        "PowerShell",
+        "behavioral",
+        "monitoring"
+      ],
+      "keyword_match_score": 0.8333333333333334,
+      "retrieval_hit": false,
+      "top_chunk_text": "THREAT INTELLIGENCE REPORT: APT29 (Cozy Bear) Campaign Analysis ================================================================ Report Date: 2024-11-15 Classification: TLP:WHITE Prepared by: CTI Anal",
+      "top_chunk_score": 0.25021660327911377
+    }
+  ]
+}
